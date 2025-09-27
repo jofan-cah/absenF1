@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 class AppConstants {
   // API Configuration
-  static const String baseUrl = 'https://prefast.fiberone.net.id/api';
+  static const String baseUrl = 'https://prefast-dev.fiberone.net.id/api';
   
   // API Endpoints
   static const String loginEndpoint = '/login';
@@ -39,6 +39,30 @@ class AppConstants {
   static const String riwayatDetailEndpoint = '/riwayat/detail';
   static const String riwayatYearlyEndpoint = '/riwayat/yearly';
   static const String riwayatPhotosEndpoint = '/riwayat/photos';
+
+
+   // ========================================
+  // LEMBUR (NEW v1.1.0)
+  // ========================================
+  static const String lemburMyListEndpoint = '/lembur/my-list';
+  static const String lemburSummaryEndpoint = '/lembur/summary';
+  static const String lemburSubmitEndpoint = '/lembur/submit';
+  static const String lemburDetailEndpoint = '/lembur'; // + /{id}
+  static const String lemburUpdateEndpoint = '/lembur'; // + /{id}
+  static const String lemburDeleteEndpoint = '/lembur'; // + /{id}
+  static const String lemburSubmitApprovalEndpoint = '/lembur'; // + /{id}/submit
+  
+  // ========================================
+  // TUNJANGAN (NEW v1.1.0)
+  // ========================================
+  static const String tunjanganUangMakanReportEndpoint = '/tunjangan/uang-makan/report';
+  static const String tunjanganUangKuotaReportEndpoint = '/tunjangan/uang-kuota/report';
+  static const String tunjanganUangLemburReportEndpoint = '/tunjangan/uang-lembur/report';
+  static const String tunjanganMyListEndpoint = '/tunjangan/my-list';
+  static const String tunjanganSummaryEndpoint = '/tunjangan/summary';
+  static const String tunjanganDetailEndpoint = '/tunjangan'; // + /{id}
+  static const String tunjanganRequestEndpoint = '/tunjangan'; // + /{id}/request
+  static const String tunjanganConfirmEndpoint = '/tunjangan'; // + /{id}/confirm-received
   
   // Storage Keys
   static const String tokenKey = 'auth_token';

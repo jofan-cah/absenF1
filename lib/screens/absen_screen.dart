@@ -18,12 +18,13 @@ class AbsenScreen extends StatefulWidget {
   State<AbsenScreen> createState() => _AbsenScreenState();
 }
 
-class _AbsenScreenState extends State<AbsenScreen> with TickerProviderStateMixin {
+class _AbsenScreenState extends State<AbsenScreen>
+    with TickerProviderStateMixin {
   late Dio _dio;
   late StorageService _storage;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
-  
+
   Map<String, dynamic>? _absenData;
   Position? _currentPosition;
   bool _isLoading = true;
@@ -37,15 +38,11 @@ class _AbsenScreenState extends State<AbsenScreen> with TickerProviderStateMixin
       duration: const Duration(seconds: 2),
       vsync: this,
     );
-    _pulseAnimation = Tween<double>(
-      begin: 1.0,
-      end: 1.1,
-    ).animate(CurvedAnimation(
-      parent: _pulseController,
-      curve: Curves.easeInOut,
-    ));
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
     _pulseController.repeat(reverse: true);
-    
+
     _initServices();
   }
 
@@ -57,25 +54,31 @@ class _AbsenScreenState extends State<AbsenScreen> with TickerProviderStateMixin
 
   Future<void> _initServices() async {
     _storage = await StorageService.getInstance();
-    _dio = Dio(BaseOptions(
-      baseUrl: AppConstants.baseUrl,
-      connectTimeout: const Duration(milliseconds: AppConstants.connectionTimeout),
-      receiveTimeout: const Duration(milliseconds: AppConstants.receiveTimeout),
-    ));
-    
+    _dio = Dio(
+      BaseOptions(
+        baseUrl: AppConstants.baseUrl,
+        connectTimeout: const Duration(
+          milliseconds: AppConstants.connectionTimeout,
+        ),
+        receiveTimeout: const Duration(
+          milliseconds: AppConstants.receiveTimeout,
+        ),
+      ),
+    );
+
     final token = await _storage.getToken();
     if (token != null) {
       _dio.options.headers['Authorization'] = 'Bearer $token';
       _dio.options.headers['Accept'] = 'application/json';
     }
-    
+
     await _loadAbsenData();
   }
 
   Future<void> _loadAbsenData() async {
     try {
       final response = await _dio.get(AppConstants.absenTodayEndpoint);
-      
+
       if (response.data['success'] == true) {
         setState(() {
           _absenData = response.data['data'];
@@ -88,7 +91,7 @@ class _AbsenScreenState extends State<AbsenScreen> with TickerProviderStateMixin
       setState(() {
         _isLoading = false;
       });
-      
+
       if (mounted) {
         _showErrorSnackBar('Gagal memuat data absen: ${e.toString()}');
       }
@@ -107,9 +110,7 @@ class _AbsenScreenState extends State<AbsenScreen> with TickerProviderStateMixin
         ),
         backgroundColor: AppConstants.errorColor,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }
@@ -126,9 +127,7 @@ class _AbsenScreenState extends State<AbsenScreen> with TickerProviderStateMixin
         ),
         backgroundColor: AppConstants.successColor,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }
@@ -163,7 +162,9 @@ class _AbsenScreenState extends State<AbsenScreen> with TickerProviderStateMixin
             Text('Permission $permission'),
           ],
         ),
-        content: Text('Aplikasi memerlukan akses $permission $reason. Silakan berikan izin di pengaturan.'),
+        content: Text(
+          'Aplikasi memerlukan akses $permission $reason. Silakan berikan izin di pengaturan.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -205,7 +206,8 @@ class _AbsenScreenState extends State<AbsenScreen> with TickerProviderStateMixin
       );
 
       setState(() {
-        _currentAddress = 'Lat: ${position.latitude.toStringAsFixed(6)}, Lng: ${position.longitude.toStringAsFixed(6)}';
+        _currentAddress =
+            'Lat: ${position.latitude.toStringAsFixed(6)}, Lng: ${position.longitude.toStringAsFixed(6)}';
       });
 
       return position;
@@ -221,6 +223,7 @@ class _AbsenScreenState extends State<AbsenScreen> with TickerProviderStateMixin
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(
       source: ImageSource.camera,
+      preferredCameraDevice: CameraDevice.front,
       imageQuality: 80,
       maxWidth: 1080,
       maxHeight: 1080,
@@ -232,123 +235,124 @@ class _AbsenScreenState extends State<AbsenScreen> with TickerProviderStateMixin
     return null;
   }
 
-// Update di absen_screen.dart - Bagian Clock In
-Future<void> _clockIn() async {
-  if (!await _requestPermissions()) return;
+  // Update di absen_screen.dart - Bagian Clock In
+  Future<void> _clockIn() async {
+    if (!await _requestPermissions()) return;
 
-  setState(() {
-    _isProcessing = true;
-  });
-
-  try {
-    _currentPosition = await _getCurrentLocation();
-    if (_currentPosition == null) {
-      throw 'Gagal mendapatkan lokasi';
-    }
-
-    final photo = await _takePicture();
-    if (photo == null) {
-      throw 'Gagal mengambil foto';
-    }
-
-    // Get current time untuk debug
-    final currentTime = TimeHelper.getCurrentTimeForServer();
-    print('Current time being sent: $currentTime'); // Debug log
-    
-    FormData formData = FormData.fromMap({
-      'latitude': _currentPosition!.latitude,
-      'longitude': _currentPosition!.longitude,
-      'address': _currentAddress,
-      'photo': await MultipartFile.fromFile(
-        photo.path,
-        filename: 'clock_in_${DateTime.now().millisecondsSinceEpoch}.jpg',
-      ),
-      // Tambahkan timestamp lokal sebagai reference
-      'local_time': currentTime,
-      'timezone': DateTime.now().timeZoneName,
-    });
-
-    final response = await _dio.post(
-      AppConstants.clockInEndpoint,
-      data: formData,
-    );
-
-    if (response.data['success'] == true) {
-      if (mounted) {
-        _showSuccessSnackBar(response.data['message']);
-      }
-      await _loadAbsenData();
-    } else {
-      throw Exception(response.data['message']);
-    }
-  } catch (e) {
-    if (mounted) {
-      _showErrorSnackBar('Clock in gagal: ${e.toString()}');
-    }
-  } finally {
     setState(() {
-      _isProcessing = false;
-    });
-  }
-}
-
-// Update Clock Out juga sama
-Future<void> _clockOut() async {
-  if (!await _requestPermissions()) return;
-
-  setState(() {
-    _isProcessing = true;
-  });
-
-  try {
-    _currentPosition = await _getCurrentLocation();
-    if (_currentPosition == null) {
-      throw 'Gagal mendapatkan lokasi';
-    }
-
-    final photo = await _takePicture();
-    if (photo == null) {
-      throw 'Gagal mengambil foto';
-    }
-
-    final currentTime = TimeHelper.getCurrentTimeForServer();
-    print('Current time being sent: $currentTime'); // Debug log
-
-    FormData formData = FormData.fromMap({
-      'latitude': _currentPosition!.latitude,
-      'longitude': _currentPosition!.longitude,
-      'address': _currentAddress,
-      'photo': await MultipartFile.fromFile(
-        photo.path,
-        filename: 'clock_out_${DateTime.now().millisecondsSinceEpoch}.jpg',
-      ),
-      'local_time': currentTime,
-      'timezone': DateTime.now().timeZoneName,
+      _isProcessing = true;
     });
 
-    final response = await _dio.post(
-      AppConstants.clockOutEndpoint,
-      data: formData,
-    );
-
-    if (response.data['success'] == true) {
-      if (mounted) {
-        _showSuccessSnackBar(response.data['message']);
+    try {
+      _currentPosition = await _getCurrentLocation();
+      if (_currentPosition == null) {
+        throw 'Gagal mendapatkan lokasi';
       }
-      await _loadAbsenData();
-    } else {
-      throw Exception(response.data['message']);
+
+      final photo = await _takePicture();
+      if (photo == null) {
+        throw 'Gagal mengambil foto';
+      }
+
+      // Get current time untuk debug
+      final currentTime = TimeHelper.getCurrentTimeForServer();
+      print('Current time being sent: $currentTime'); // Debug log
+
+      FormData formData = FormData.fromMap({
+        'latitude': _currentPosition!.latitude,
+        'longitude': _currentPosition!.longitude,
+        'address': _currentAddress,
+        'photo': await MultipartFile.fromFile(
+          photo.path,
+          filename: 'clock_in_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        ),
+        // Tambahkan timestamp lokal sebagai reference
+        'local_time': currentTime,
+        'timezone': DateTime.now().timeZoneName,
+      });
+
+      final response = await _dio.post(
+        AppConstants.clockInEndpoint,
+        data: formData,
+      );
+
+      if (response.data['success'] == true) {
+        if (mounted) {
+          _showSuccessSnackBar(response.data['message']);
+        }
+        await _loadAbsenData();
+      } else {
+        throw Exception(response.data['message']);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showErrorSnackBar('Clock in gagal: ${e.toString()}');
+      }
+    } finally {
+      setState(() {
+        _isProcessing = false;
+      });
     }
-  } catch (e) {
-    if (mounted) {
-      _showErrorSnackBar('Clock out gagal: ${e.toString()}');
-    }
-  } finally {
-    setState(() {
-      _isProcessing = false;
-    });
   }
-}
+
+  // Update Clock Out juga sama
+  Future<void> _clockOut() async {
+    if (!await _requestPermissions()) return;
+
+    setState(() {
+      _isProcessing = true;
+    });
+
+    try {
+      _currentPosition = await _getCurrentLocation();
+      if (_currentPosition == null) {
+        throw 'Gagal mendapatkan lokasi';
+      }
+
+      final photo = await _takePicture();
+      if (photo == null) {
+        throw 'Gagal mengambil foto';
+      }
+
+      final currentTime = TimeHelper.getCurrentTimeForServer();
+      print('Current time being sent: $currentTime'); // Debug log
+
+      FormData formData = FormData.fromMap({
+        'latitude': _currentPosition!.latitude,
+        'longitude': _currentPosition!.longitude,
+        'address': _currentAddress,
+        'photo': await MultipartFile.fromFile(
+          photo.path,
+          filename: 'clock_out_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        ),
+        'local_time': currentTime,
+        'timezone': DateTime.now().timeZoneName,
+      });
+
+      final response = await _dio.post(
+        AppConstants.clockOutEndpoint,
+        data: formData,
+      );
+
+      if (response.data['success'] == true) {
+        if (mounted) {
+          _showSuccessSnackBar(response.data['message']);
+        }
+        await _loadAbsenData();
+      } else {
+        throw Exception(response.data['message']);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showErrorSnackBar('Clock out gagal: ${e.toString()}');
+      }
+    } finally {
+      setState(() {
+        _isProcessing = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -364,7 +368,9 @@ Future<void> _clockOut() async {
                     children: [
                       _buildHeader(),
                       Padding(
-                        padding: const EdgeInsets.all(AppConstants.paddingMedium),
+                        padding: const EdgeInsets.all(
+                          AppConstants.paddingMedium,
+                        ),
                         child: Column(
                           children: [
                             if (_absenData?['has_jadwal'] == true) ...[
@@ -453,17 +459,14 @@ Future<void> _clockOut() async {
     final absen = _absenData?['absen'];
     final hasClockIn = absen?['clock_in'] != null;
     final hasClockOut = absen?['clock_out'] != null;
-    
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Colors.white,
-            AppConstants.primaryColor.withOpacity(0.05),
-          ],
+          colors: [Colors.white, AppConstants.primaryColor.withOpacity(0.05)],
         ),
         borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
         boxShadow: [
@@ -485,7 +488,9 @@ Future<void> _clockOut() async {
                   'Clock In',
                   hasClockIn ? absen['clock_in'] : '--:--',
                   Icons.login,
-                  hasClockIn ? AppConstants.successColor : AppConstants.textSecondaryColor,
+                  hasClockIn
+                      ? AppConstants.successColor
+                      : AppConstants.textSecondaryColor,
                   hasClockIn,
                 ),
                 const SizedBox(width: 20),
@@ -499,23 +504,27 @@ Future<void> _clockOut() async {
                   'Clock Out',
                   hasClockOut ? absen['clock_out'] : '--:--',
                   Icons.logout,
-                  hasClockOut ? AppConstants.errorColor : AppConstants.textSecondaryColor,
+                  hasClockOut
+                      ? AppConstants.errorColor
+                      : AppConstants.textSecondaryColor,
                   hasClockOut,
                 ),
               ],
             ),
-            
+
             const SizedBox(height: AppConstants.paddingLarge),
-            
+
             _buildStatusBadge(absen?['status']),
-            
+
             if (absen?['work_hours'] != null) ...[
               const SizedBox(height: AppConstants.paddingMedium),
               Container(
                 padding: const EdgeInsets.all(AppConstants.paddingMedium),
                 decoration: BoxDecoration(
                   color: AppConstants.primaryColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+                  borderRadius: BorderRadius.circular(
+                    AppConstants.radiusMedium,
+                  ),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -543,15 +552,25 @@ Future<void> _clockOut() async {
     );
   }
 
-  Widget _buildTimeCard(String label, String time, IconData icon, Color color, bool isActive) {
+  Widget _buildTimeCard(
+    String label,
+    String time,
+    IconData icon,
+    Color color,
+    bool isActive,
+  ) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(AppConstants.paddingMedium),
         decoration: BoxDecoration(
-          color: isActive ? color.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
+          color: isActive
+              ? color.withOpacity(0.1)
+              : Colors.grey.withOpacity(0.1),
           borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
           border: Border.all(
-            color: isActive ? color.withOpacity(0.3) : Colors.grey.withOpacity(0.3),
+            color: isActive
+                ? color.withOpacity(0.3)
+                : Colors.grey.withOpacity(0.3),
           ),
         ),
         child: Column(
@@ -568,9 +587,7 @@ Future<void> _clockOut() async {
             ),
             Text(
               label,
-              style: AppConstants.captionStyle.copyWith(
-                color: color,
-              ),
+              style: AppConstants.captionStyle.copyWith(color: color),
             ),
           ],
         ),
@@ -582,7 +599,7 @@ Future<void> _clockOut() async {
     Color color;
     String text;
     IconData icon;
-    
+
     switch (status) {
       case 'present':
         color = AppConstants.successColor;
@@ -609,7 +626,7 @@ Future<void> _clockOut() async {
         text = 'Unknown';
         icon = Icons.help;
     }
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: BoxDecoration(
@@ -638,7 +655,7 @@ Future<void> _clockOut() async {
   Widget _buildAbsenButton() {
     final canClockIn = _absenData?['can_clock_in'] == true;
     final canClockOut = _absenData?['can_clock_out'] == true;
-    
+
     if (!canClockIn && !canClockOut) {
       return Container(
         width: double.infinity,
@@ -818,11 +835,7 @@ Future<void> _clockOut() async {
                     ),
                   ),
                 ] else ...[
-                  const Icon(
-                    Icons.fingerprint,
-                    color: Colors.white,
-                    size: 60,
-                  ),
+                  const Icon(Icons.fingerprint, color: Colors.white, size: 60),
                   const SizedBox(height: 8),
                   Text(
                     'CLOCK OUT',
@@ -849,7 +862,7 @@ Future<void> _clockOut() async {
   Widget _buildScheduleInfo() {
     final jadwal = _absenData?['jadwal'];
     final shift = jadwal?['shift'];
-    
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -883,19 +896,23 @@ Future<void> _clockOut() async {
                   ),
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  'Informasi Shift',
-                  style: AppConstants.subtitleStyle,
-                ),
+                Text('Informasi Shift', style: AppConstants.subtitleStyle),
               ],
             ),
             const SizedBox(height: AppConstants.paddingMedium),
-            
+
             _buildInfoRow(Icons.badge, 'Nama Shift', shift?['name'] ?? '-'),
-            _buildInfoRow(Icons.access_time, 'Jam Kerja', 
-                '${shift?['start_time'] ?? '-'} - ${shift?['end_time'] ?? '-'}'),
+            _buildInfoRow(
+              Icons.access_time,
+              'Jam Kerja',
+              '${shift?['start_time'] ?? '-'} - ${shift?['end_time'] ?? '-'}',
+            ),
             if (shift?['break_duration'] != null)
-              _buildInfoRow(Icons.coffee, 'Durasi Istirahat', '${shift['break_duration']} menit'),
+              _buildInfoRow(
+                Icons.coffee,
+                'Durasi Istirahat',
+                '${shift['break_duration']} menit',
+              ),
           ],
         ),
       ),
@@ -936,21 +953,20 @@ Future<void> _clockOut() async {
                   ),
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  'Lokasi Terakhir',
-                  style: AppConstants.subtitleStyle,
-                ),
+                Text('Lokasi Terakhir', style: AppConstants.subtitleStyle),
               ],
             ),
             const SizedBox(height: AppConstants.paddingMedium),
-            
+
             if (_currentAddress.isNotEmpty) ...[
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(AppConstants.paddingMedium),
                 decoration: BoxDecoration(
                   color: AppConstants.successColor.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+                  borderRadius: BorderRadius.circular(
+                    AppConstants.radiusMedium,
+                  ),
                   border: Border.all(
                     color: AppConstants.successColor.withOpacity(0.2),
                   ),
@@ -995,18 +1011,11 @@ Future<void> _clockOut() async {
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
-          Icon(
-            icon,
-            size: 18,
-            color: AppConstants.textSecondaryColor,
-          ),
+          Icon(icon, size: 18, color: AppConstants.textSecondaryColor),
           const SizedBox(width: 12),
           SizedBox(
             width: 100,
-            child: Text(
-              label,
-              style: AppConstants.captionStyle,
-            ),
+            child: Text(label, style: AppConstants.captionStyle),
           ),
           const Text(': '),
           Expanded(
@@ -1029,10 +1038,7 @@ Future<void> _clockOut() async {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Colors.white,
-            AppConstants.backgroundColor,
-          ],
+          colors: [Colors.white, AppConstants.backgroundColor],
         ),
         borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
         boxShadow: [
@@ -1062,9 +1068,7 @@ Future<void> _clockOut() async {
             const SizedBox(height: AppConstants.paddingLarge),
             Text(
               'Tidak Ada Jadwal Hari Ini',
-              style: AppConstants.titleStyle.copyWith(
-                fontSize: 22,
-              ),
+              style: AppConstants.titleStyle.copyWith(fontSize: 22),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: AppConstants.paddingMedium),

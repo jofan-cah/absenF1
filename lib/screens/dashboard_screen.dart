@@ -11,6 +11,8 @@ import 'absen_screen.dart';
 import 'jadwal_screen.dart';
 import 'riwayat_screen.dart';
 import 'profile_screen.dart';
+import 'lembur_screen.dart';
+import 'tunjangan_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -23,7 +25,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late AuthService _authService;
   late StorageService _storage;
   late Dio _dio;
-  
+
   Map<String, dynamic>? _dashboardData;
   Map<String, dynamic>? _userData;
   bool _isLoading = true;
@@ -36,7 +38,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _authService = AuthService();
-    
+
     // Initialize screens list
     _screens.addAll([
       _DashboardContent(
@@ -51,38 +53,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
       const RiwayatScreen(),
       const ProfileScreen(),
     ]);
-    
+
     _initServices();
   }
 
   Future<void> _initServices() async {
     _storage = await StorageService.getInstance();
-    _dio = Dio(BaseOptions(
-      baseUrl: AppConstants.baseUrl,
-      connectTimeout: const Duration(milliseconds: AppConstants.connectionTimeout),
-      receiveTimeout: const Duration(milliseconds: AppConstants.receiveTimeout),
-    ));
-    
+    _dio = Dio(
+      BaseOptions(
+        baseUrl: AppConstants.baseUrl,
+        connectTimeout: const Duration(
+          milliseconds: AppConstants.connectionTimeout,
+        ),
+        receiveTimeout: const Duration(
+          milliseconds: AppConstants.receiveTimeout,
+        ),
+      ),
+    );
+
     final token = await _storage.getToken();
     if (token != null) {
       _dio.options.headers['Authorization'] = 'Bearer $token';
       _dio.options.headers['Accept'] = 'application/json';
     }
-    
+
     await _loadDashboardData();
   }
 
   Future<void> _loadDashboardData() async {
     try {
       _userData = await _storage.getUserData();
-      
+
       final response = await _dio.get(AppConstants.dashboardEndpoint);
-      
+
       if (response.data['success'] == true) {
         setState(() {
           _dashboardData = response.data['data'];
           _isLoading = false;
-          
+
           // Update dashboard content screen
           _screens[0] = _DashboardContent(
             dashboardData: _dashboardData,
@@ -99,7 +107,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       setState(() {
         _isLoading = false;
       });
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -145,10 +153,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _screens,
-      ),
+      body: IndexedStack(index: _selectedIndex, children: _screens),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -233,7 +238,9 @@ class _DashboardContent extends StatelessWidget {
                     children: [
                       _buildHeader(context),
                       Padding(
-                        padding: const EdgeInsets.all(AppConstants.paddingMedium),
+                        padding: const EdgeInsets.all(
+                          AppConstants.paddingMedium,
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -256,7 +263,7 @@ class _DashboardContent extends StatelessWidget {
   Widget _buildHeader(BuildContext context) {
     final karyawan = userData?['karyawan'] ?? {};
     final name = karyawan['full_name'] ?? 'User';
-    
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -327,17 +334,14 @@ class _DashboardContent extends StatelessWidget {
   Widget _buildTodayScheduleCard() {
     final todayJadwal = dashboardData?['today']?['jadwal'];
     final todayAbsen = dashboardData?['today']?['absen'];
-    
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Colors.white,
-            AppConstants.primaryColor.withOpacity(0.05),
-          ],
+          colors: [Colors.white, AppConstants.primaryColor.withOpacity(0.05)],
         ),
         borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
         boxShadow: [
@@ -361,27 +365,22 @@ class _DashboardContent extends StatelessWidget {
                     color: AppConstants.primaryColor,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(
-                    Icons.today,
-                    color: Colors.white,
-                    size: 20,
-                  ),
+                  child: const Icon(Icons.today, color: Colors.white, size: 20),
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  'Jadwal Hari Ini',
-                  style: AppConstants.subtitleStyle,
-                ),
+                Text('Jadwal Hari Ini', style: AppConstants.subtitleStyle),
               ],
             ),
             const SizedBox(height: AppConstants.paddingMedium),
-            
+
             if (todayJadwal != null) ...[
               Container(
                 padding: const EdgeInsets.all(AppConstants.paddingMedium),
                 decoration: BoxDecoration(
                   color: AppConstants.successColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+                  borderRadius: BorderRadius.circular(
+                    AppConstants.radiusMedium,
+                  ),
                 ),
                 child: Column(
                   children: [
@@ -419,7 +418,7 @@ class _DashboardContent extends StatelessWidget {
                   ],
                 ),
               ),
-              
+
               if (todayAbsen != null) ...[
                 const SizedBox(height: AppConstants.paddingMedium),
                 _buildStatusBadge(todayAbsen['status']),
@@ -455,7 +454,7 @@ class _DashboardContent extends StatelessWidget {
     Color color;
     String text;
     IconData icon;
-    
+
     switch (status) {
       case 'present':
         color = AppConstants.successColor;
@@ -482,7 +481,7 @@ class _DashboardContent extends StatelessWidget {
         text = 'Unknown';
         icon = Icons.help;
     }
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -510,16 +509,13 @@ class _DashboardContent extends StatelessWidget {
 
   Widget _buildMonthlyStats() {
     final stats = dashboardData?['monthly_stats'] ?? {};
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Statistik Bulan Ini',
-          style: AppConstants.subtitleStyle,
-        ),
+        Text('Statistik Bulan Ini', style: AppConstants.subtitleStyle),
         const SizedBox(height: AppConstants.paddingMedium),
-        
+
         GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
@@ -558,7 +554,12 @@ class _DashboardContent extends StatelessWidget {
     );
   }
 
-  Widget _buildStatCard(String label, String value, IconData icon, Color color) {
+  Widget _buildStatCard(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -603,67 +604,90 @@ class _DashboardContent extends StatelessWidget {
     );
   }
 
+  // Ganti method _buildQuickActions di _DashboardContent widget
+
   Widget _buildQuickActions(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Menu Cepat',
-          style: AppConstants.subtitleStyle,
-        ),
+        Text('Menu Cepat', style: AppConstants.subtitleStyle),
         const SizedBox(height: AppConstants.paddingMedium),
-        
-        GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisSpacing: AppConstants.paddingMedium,
-          mainAxisSpacing: AppConstants.paddingMedium,
-          childAspectRatio: 1.2,
-          children: [
-            _buildActionCard(
-              'Absen Sekarang',
-              Icons.fingerprint,
-              AppConstants.primaryColor,
-              () {
-                // Navigate to absen tab
-                final dashboardState = context.findAncestorStateOfType<_DashboardScreenState>();
-                dashboardState?.setState(() {
-                  dashboardState._selectedIndex = 1;
-                });
-              },
-            ),
-            _buildActionCard(
-              'Lihat Jadwal',
-              Icons.schedule,
-              AppConstants.successColor,
-              () {
-                // Navigate to jadwal tab
-                final dashboardState = context.findAncestorStateOfType<_DashboardScreenState>();
-                dashboardState?.setState(() {
-                  dashboardState._selectedIndex = 2;
-                });
-              },
-            ),
-          ],
+
+        SizedBox(
+          height: 140,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              _buildHorizontalActionCard(
+                'Absen Sekarang',
+                Icons.fingerprint,
+                AppConstants.primaryColor,
+                () {
+                  final dashboardState = context
+                      .findAncestorStateOfType<_DashboardScreenState>();
+                  dashboardState?.setState(() {
+                    dashboardState._selectedIndex = 1;
+                  });
+                },
+              ),
+              _buildHorizontalActionCard(
+                'Lihat Jadwal',
+                Icons.schedule,
+                AppConstants.successColor,
+                () {
+                  final dashboardState = context
+                      .findAncestorStateOfType<_DashboardScreenState>();
+                  dashboardState?.setState(() {
+                    dashboardState._selectedIndex = 2;
+                  });
+                },
+              ),
+              _buildHorizontalActionCard(
+                'Lembur',
+                Icons.work_history,
+                AppConstants.warningColor,
+                () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const LemburScreen()),
+                  );
+                },
+              ),
+              _buildHorizontalActionCard(
+                'Tunjangan',
+                Icons.payments,
+                Colors.orange,
+                () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const TunjanganScreen()),
+                  );
+                },
+              ),
+             ],
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildActionCard(String label, IconData icon, Color color, VoidCallback onTap) {
+  Widget _buildHorizontalActionCard(
+    String label,
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+  ) {
     return Container(
+      width: 120,
+      margin: const EdgeInsets.only(right: 12),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            color.withOpacity(0.1),
-            color.withOpacity(0.05),
-          ],
+          colors: [color.withOpacity(0.15), color.withOpacity(0.05)],
         ),
         borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: color.withOpacity(0.3)),
       ),
       child: Material(
         color: Colors.transparent,
@@ -671,25 +695,35 @@ class _DashboardContent extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
           child: Padding(
-            padding: const EdgeInsets.all(AppConstants.paddingMedium),
+            padding: const EdgeInsets.all(16),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: color,
                     borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: color.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
-                  child: Icon(icon, color: Colors.white, size: 24),
+                  child: Icon(icon, color: Colors.white, size: 28),
                 ),
                 const SizedBox(height: 12),
                 Text(
                   label,
                   style: AppConstants.bodyStyle.copyWith(
                     fontWeight: FontWeight.w600,
+                    fontSize: 13,
                   ),
                   textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -698,4 +732,6 @@ class _DashboardContent extends StatelessWidget {
       ),
     );
   }
+
+  
 }
