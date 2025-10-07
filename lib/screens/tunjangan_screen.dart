@@ -24,8 +24,9 @@ class _TunjanganScreenState extends State<TunjanganScreen> with SingleTickerProv
   Map<String, dynamic>? _summary;
   bool _isLoading = true;
   
-  int _selectedMonth = DateTime.now().month;
-  int _selectedYear = DateTime.now().year;
+  // UBAH: Jangan paksa default, biar null
+  int? _selectedMonth; // null = all months
+  int? _selectedYear;  // null = all years
   String? _selectedStatus;
   String? _selectedType;
 
@@ -62,15 +63,19 @@ class _TunjanganScreenState extends State<TunjanganScreen> with SingleTickerProv
 
   Future<void> _loadTunjanganList() async {
     try {
+      // UBAH: Hanya kirim parameter jika ada value
+      final queryParams = <String, dynamic>{
+        'per_page': 50,
+      };
+      
+      if (_selectedMonth != null) queryParams['month'] = _selectedMonth;
+      if (_selectedYear != null) queryParams['year'] = _selectedYear;
+      if (_selectedStatus != null) queryParams['status'] = _selectedStatus;
+      if (_selectedType != null) queryParams['type'] = _selectedType;
+
       final response = await _dio.get(
         AppConstants.tunjanganMyListEndpoint,
-        queryParameters: {
-          'month': _selectedMonth,
-          'year': _selectedYear,
-          if (_selectedStatus != null) 'status': _selectedStatus,
-          if (_selectedType != null) 'type': _selectedType,
-          'per_page': 50,
-        },
+        queryParameters: queryParams,
       );
       
       if (response.data['success'] == true) {
@@ -89,12 +94,15 @@ class _TunjanganScreenState extends State<TunjanganScreen> with SingleTickerProv
 
   Future<void> _loadSummary() async {
     try {
+      // UBAH: Hanya kirim parameter jika ada value
+      final queryParams = <String, dynamic>{};
+      
+      if (_selectedMonth != null) queryParams['month'] = _selectedMonth;
+      if (_selectedYear != null) queryParams['year'] = _selectedYear;
+
       final response = await _dio.get(
         AppConstants.tunjanganSummaryEndpoint,
-        queryParameters: {
-          'month': _selectedMonth,
-          'year': _selectedYear,
-        },
+        queryParameters: queryParams,
       );
       
       if (response.data['success'] == true) {
@@ -265,14 +273,33 @@ class _TunjanganScreenState extends State<TunjanganScreen> with SingleTickerProv
   Widget _buildSummaryHeader() {
     if (_summary == null) return const SizedBox.shrink();
 
+    // UBAH: Tampilkan periode yang sesuai
+    String periodText;
+    if (_selectedMonth != null && _selectedYear != null) {
+      periodText = DateFormat('MMMM yyyy').format(DateTime(_selectedYear!, _selectedMonth!));
+    } else if (_selectedYear != null) {
+      periodText = 'Tahun $_selectedYear';
+    } else {
+      periodText = 'Semua Periode';
+    }
+
     return CustomCard(
       margin: const EdgeInsets.only(bottom: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Summary ${DateFormat('MMMM yyyy').format(DateTime(_selectedYear, _selectedMonth))}',
-            style: AppConstants.subtitleStyle,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Summary', style: AppConstants.subtitleStyle),
+              Text(
+                periodText,
+                style: AppConstants.captionStyle.copyWith(
+                  color: AppConstants.primaryColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           Row(
@@ -304,12 +331,18 @@ class _TunjanganScreenState extends State<TunjanganScreen> with SingleTickerProv
       children: [
         Icon(icon, size: 20, color: AppConstants.primaryColor),
         const SizedBox(width: 8),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: AppConstants.captionStyle),
-            Text(value, style: AppConstants.bodyStyle.copyWith(fontWeight: FontWeight.w600)),
-          ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: AppConstants.captionStyle),
+              Text(
+                value,
+                style: AppConstants.bodyStyle.copyWith(fontWeight: FontWeight.w600),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -462,27 +495,106 @@ class _TunjanganScreenState extends State<TunjanganScreen> with SingleTickerProv
   void _showFilterDialog() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       builder: (context) => Container(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text('Filter Tunjangan', style: AppConstants.subtitleStyle),
+            const SizedBox(height: 20),
+            
+            // Filter Tahun
+            DropdownButtonFormField<int?>(
+              value: _selectedYear,
+              decoration: const InputDecoration(
+                labelText: 'Tahun',
+                border: OutlineInputBorder(),
+              ),
+              items: [
+                const DropdownMenuItem(value: null, child: Text('Semua Tahun')),
+                for (int year = DateTime.now().year; year >= DateTime.now().year - 3; year--)
+                  DropdownMenuItem(value: year, child: Text(year.toString())),
+              ],
+              onChanged: (value) {
+                setState(() => _selectedYear = value);
+              },
+            ),
             const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
+            
+            // Filter Bulan
+            DropdownButtonFormField<int?>(
+              value: _selectedMonth,
+              decoration: const InputDecoration(
+                labelText: 'Bulan',
+                border: OutlineInputBorder(),
+              ),
+              items: [
+                const DropdownMenuItem(value: null, child: Text('Semua Bulan')),
+                for (int month = 1; month <= 12; month++)
+                  DropdownMenuItem(
+                    value: month,
+                    child: Text(DateFormat('MMMM').format(DateTime(2024, month))),
+                  ),
+              ],
+              onChanged: (value) {
+                setState(() => _selectedMonth = value);
+              },
+            ),
+            const SizedBox(height: 16),
+            
+            // Filter Status
+            DropdownButtonFormField<String?>(
               value: _selectedStatus,
-              decoration: const InputDecoration(labelText: 'Status'),
+              decoration: const InputDecoration(
+                labelText: 'Status',
+                border: OutlineInputBorder(),
+              ),
               items: [
                 const DropdownMenuItem(value: null, child: Text('Semua Status')),
                 ...['pending', 'requested', 'approved', 'received']
-                    .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                    .map((s) => DropdownMenuItem(value: s, child: Text(s.toUpperCase())))
                     .toList(),
               ],
               onChanged: (value) {
                 setState(() => _selectedStatus = value);
-                Navigator.pop(context);
-                _loadData();
               },
+            ),
+            const SizedBox(height: 24),
+            
+            // Action buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      setState(() {
+                        _selectedMonth = null;
+                        _selectedYear = null;
+                        _selectedStatus = null;
+                      });
+                      Navigator.pop(context);
+                      _loadData();
+                    },
+                    child: const Text('Reset'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _loadData();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppConstants.primaryColor,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('Terapkan'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -506,7 +618,7 @@ class _TunjanganScreenState extends State<TunjanganScreen> with SingleTickerProv
   }
 }
 
-// Detail Screen
+// Detail Screen (tidak berubah)
 class TunjanganDetailScreen extends StatelessWidget {
   final TunjanganKaryawan tunjangan;
 

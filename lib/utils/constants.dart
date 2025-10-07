@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 
 class AppConstants {
   // API Configuration
-  static const String baseUrl = 'https://prefast-dev.fiberone.net.id/api';
+  // static const String baseUrl = 'https://prefast-dev.fiberone.net.id/api';
+  static const String baseUrl = 'https://prefast.fiberone.net.id/api';
   
   // API Endpoints
   static const String loginEndpoint = '/login';
@@ -64,6 +65,16 @@ class AppConstants {
   static const String tunjanganRequestEndpoint = '/tunjangan'; // + /{id}/request
   static const String tunjanganConfirmEndpoint = '/tunjangan'; // + /{id}/confirm-received
   
+
+  static const String ijinTypesEndpoint = '/ijin/types';
+  static const String ijinMyHistoryEndpoint = '/ijin/my-history';
+  static const String ijinDetailEndpoint = '/ijin'; // + /{id}
+  static const String ijinSubmitEndpoint = '/ijin/submit';
+  static const String ijinShiftSwapEndpoint = '/ijin/shift-swap';
+  static const String ijinCompensationLeaveEndpoint = '/ijin/compensation-leave';
+  static const String ijinCancelEndpoint = '/ijin'; // + /{id} DELETE
+  static const String ijinAvailablePiketDatesEndpoint = '/ijin/available-piket-dates';
+
   // Storage Keys
   static const String tokenKey = 'auth_token';
   static const String userKey = 'user_data';
