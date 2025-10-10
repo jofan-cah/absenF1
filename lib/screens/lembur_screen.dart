@@ -1,14 +1,14 @@
-// lib/screens/lembur_screen.dart
+// lib/screens/lembur_screen.dart - LIST & SUMMARY ONLY
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
-import 'dart:io';
-import 'package:image_picker/image_picker.dart';
 import '../services/storage_service.dart';
 import '../utils/constants.dart';
 import '../models/lembur.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/loading_widget.dart';
+import 'lembur_form_screen.dart';
+import 'lembur_detail_screen.dart';
 
 class LemburScreen extends StatefulWidget {
   const LemburScreen({super.key});
@@ -55,10 +55,12 @@ class _LemburScreenState extends State<LemburScreen> with SingleTickerProviderSt
   }
 
   Future<void> _loadData() async {
+    setState(() => _isLoading = true);
     await Future.wait([
       _loadLemburList(),
       _loadSummary(),
     ]);
+    setState(() => _isLoading = false);
   }
 
   Future<void> _loadLemburList() async {
@@ -73,15 +75,53 @@ class _LemburScreenState extends State<LemburScreen> with SingleTickerProviderSt
         },
       );
       
+      // ✅ DEBUG: Print response
+      print('===== LEMBUR LIST RESPONSE =====');
+      print('Success: ${response.data['success']}');
+      print('Data: ${response.data['data']}');
+      
       if (response.data['success'] == true) {
+        // ✅ FIX: Handle response structure dengan benar
+        var dataList;
+        
+        // Cek apakah data langsung List atau ada pagination
+        if (response.data['data'] is List) {
+          // Langsung list
+          dataList = response.data['data'];
+        } else if (response.data['data'] is Map && response.data['data']['data'] != null) {
+          // Ada pagination (data.data)
+          dataList = response.data['data']['data'];
+        } else {
+          // Fallback
+          dataList = [];
+        }
+        
+        // ✅ DEBUG: Print first item
+        if (dataList is List && dataList.isNotEmpty) {
+          print('===== FIRST LEMBUR ITEM =====');
+          print(dataList[0]);
+        }
+        
         setState(() {
-          _lemburList = (response.data['data'] as List)
-              .map((json) => Lembur.fromJson(json))
+          _lemburList = (dataList as List)
+              .map((json) {
+                try {
+                  return Lembur.fromJson(json as Map<String, dynamic>);
+                } catch (e, stackTrace) {
+                  print('===== ERROR PARSING LEMBUR =====');
+                  print('JSON: $json');
+                  print('Error: $e');
+                  print('StackTrace: $stackTrace');
+                  rethrow;
+                }
+              })
               .toList();
-          _isLoading = false;
         });
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('===== ERROR LOAD LEMBUR =====');
+      print('Error: $e');
+      print('StackTrace: $stackTrace');
       setState(() => _isLoading = false);
       _showError('Gagal memuat data lembur: ${e.toString()}');
     }
@@ -99,26 +139,50 @@ class _LemburScreenState extends State<LemburScreen> with SingleTickerProviderSt
       
       if (response.data['success'] == true) {
         setState(() {
-          _summary = response.data['data']['summary'];
+          _summary = response.data['data']['summary'] ?? response.data['data'];
         });
       }
     } catch (e) {
-      // Silent error, summary is optional
+      print('Error loading summary: $e');
     }
   }
 
   Future<void> _submitLembur(Lembur lembur) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Konfirmasi'),
+        content: const Text('Ajukan lembur ini untuk persetujuan?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Ya, Ajukan'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
     try {
       final response = await _dio.post(
-        '${AppConstants.lemburDetailEndpoint}/${lembur.lemburId}/submit',
+        '${AppConstants.lemburSubmitApprovalEndpoint}/${lembur.lemburId}/submit',
       );
       
       if (response.data['success'] == true) {
-        _showSuccess('Lembur berhasil diajukan');
+        _showSuccess('Lembur berhasil diajukan untuk persetujuan');
         await _loadData();
       }
     } catch (e) {
-      _showError('Gagal mengajukan lembur: ${e.toString()}');
+      if (e is DioException && e.response?.data != null) {
+        _showError(e.response!.data['message'] ?? 'Gagal mengajukan lembur');
+      } else {
+        _showError('Gagal mengajukan lembur: ${e.toString()}');
+      }
     }
   }
 
@@ -127,7 +191,7 @@ class _LemburScreenState extends State<LemburScreen> with SingleTickerProviderSt
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Konfirmasi'),
-        content: const Text('Hapus lembur ini?'),
+        content: const Text('Hapus lembur ini? Tindakan ini tidak dapat dibatalkan.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -135,18 +199,28 @@ class _LemburScreenState extends State<LemburScreen> with SingleTickerProviderSt
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: AppConstants.errorColor),
             child: const Text('Hapus'),
           ),
         ],
       ),
     );
 
-    if (confirm == true) {
-      try {
-        await _dio.delete('${AppConstants.lemburDeleteEndpoint}/${lembur.lemburId}');
+    if (confirm != true) return;
+
+    try {
+      final response = await _dio.delete(
+        '${AppConstants.lemburDeleteEndpoint}/${lembur.lemburId}',
+      );
+      
+      if (response.data['success'] == true) {
         _showSuccess('Lembur berhasil dihapus');
         await _loadData();
-      } catch (e) {
+      }
+    } catch (e) {
+      if (e is DioException && e.response?.data != null) {
+        _showError(e.response!.data['message'] ?? 'Gagal menghapus lembur');
+      } else {
         _showError('Gagal menghapus lembur: ${e.toString()}');
       }
     }
@@ -221,6 +295,11 @@ class _LemburScreenState extends State<LemburScreen> with SingleTickerProviderSt
                 color: AppConstants.textSecondaryColor,
               ),
             ),
+            const SizedBox(height: 8),
+            Text(
+              'Periode: ${DateFormat('MMMM yyyy', 'id_ID').format(DateTime(_selectedYear, _selectedMonth))}',
+              style: AppConstants.captionStyle,
+            ),
           ],
         ),
       );
@@ -254,7 +333,7 @@ class _LemburScreenState extends State<LemburScreen> with SingleTickerProviderSt
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      DateFormat('dd MMM yyyy').format(lembur.tanggalLembur),
+                      DateFormat('dd MMM yyyy', 'id_ID').format(lembur.tanggalLembur),
                       style: AppConstants.subtitleStyle,
                     ),
                     const SizedBox(height: 4),
@@ -277,13 +356,6 @@ class _LemburScreenState extends State<LemburScreen> with SingleTickerProviderSt
                 '${lembur.totalJam.toStringAsFixed(1)} jam',
                 style: AppConstants.captionStyle,
               ),
-              const SizedBox(width: 16),
-              Icon(Icons.tag, size: 16, color: AppConstants.textSecondaryColor),
-              const SizedBox(width: 4),
-              Text(
-                lembur.kategoriDisplay,
-                style: AppConstants.captionStyle,
-              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -293,7 +365,8 @@ class _LemburScreenState extends State<LemburScreen> with SingleTickerProviderSt
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
-          if (lembur.canEdit || lembur.canSubmit) ...[
+          
+          if (lembur.canEdit || lembur.canSubmit || lembur.canDelete) ...[
             const Divider(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -332,24 +405,32 @@ class _LemburScreenState extends State<LemburScreen> with SingleTickerProviderSt
 
   Widget _buildStatusBadge(String status) {
     Color color;
+    String label;
+    
     switch (status) {
       case 'draft':
         color = AppConstants.textSecondaryColor;
+        label = 'Draft';
         break;
       case 'submitted':
         color = AppConstants.warningColor;
+        label = 'Diajukan';
         break;
       case 'approved':
         color = AppConstants.successColor;
+        label = 'Disetujui';
         break;
       case 'rejected':
         color = AppConstants.errorColor;
+        label = 'Ditolak';
         break;
       case 'processed':
         color = AppConstants.primaryColor;
+        label = 'Selesai';
         break;
       default:
         color = AppConstants.textSecondaryColor;
+        label = status;
     }
 
     return Container(
@@ -360,7 +441,7 @@ class _LemburScreenState extends State<LemburScreen> with SingleTickerProviderSt
         border: Border.all(color: color.withOpacity(0.3)),
       ),
       child: Text(
-        Lembur.fromJson({'status': status, 'created_at': DateTime.now().toIso8601String(), 'updated_at': DateTime.now().toIso8601String(), 'lembur_id': '', 'karyawan_id': '', 'tanggal_lembur': DateTime.now().toIso8601String(), 'jam_mulai': '', 'jam_selesai': '', 'total_jam': 0, 'kategori_lembur': '', 'multiplier': 0, 'deskripsi_pekerjaan': ''}).statusDisplay,
+        label,
         style: TextStyle(
           color: color,
           fontSize: 12,
@@ -381,7 +462,7 @@ class _LemburScreenState extends State<LemburScreen> with SingleTickerProviderSt
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Summary ${DateFormat('MMMM yyyy').format(DateTime(_selectedYear, _selectedMonth))}',
+            'Summary ${DateFormat('MMMM yyyy', 'id_ID').format(DateTime(_selectedYear, _selectedMonth))}',
             style: AppConstants.titleStyle,
           ),
           const SizedBox(height: 16),
@@ -393,10 +474,10 @@ class _LemburScreenState extends State<LemburScreen> with SingleTickerProviderSt
             mainAxisSpacing: 12,
             childAspectRatio: 1.5,
             children: [
-              _buildSummaryCard('Total Lembur', '${_summary!['total_lembur']}', Icons.work, AppConstants.primaryColor),
-              _buildSummaryCard('Draft', '${_summary!['draft']}', Icons.drafts, AppConstants.textSecondaryColor),
-              _buildSummaryCard('Diajukan', '${_summary!['submitted']}', Icons.send, AppConstants.warningColor),
-              _buildSummaryCard('Disetujui', '${_summary!['approved']}', Icons.check_circle, AppConstants.successColor),
+              _buildSummaryCard('Total', '${_summary!['total_lembur'] ?? 0}', Icons.work, AppConstants.primaryColor),
+              _buildSummaryCard('Draft', '${_summary!['draft'] ?? 0}', Icons.drafts, AppConstants.textSecondaryColor),
+              _buildSummaryCard('Diajukan', '${_summary!['submitted'] ?? 0}', Icons.send, AppConstants.warningColor),
+              _buildSummaryCard('Disetujui', '${_summary!['approved'] ?? 0}', Icons.check_circle, AppConstants.successColor),
             ],
           ),
           const SizedBox(height: 16),
@@ -445,23 +526,84 @@ class _LemburScreenState extends State<LemburScreen> with SingleTickerProviderSt
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Filter Lembur', style: AppConstants.subtitleStyle),
             const SizedBox(height: 16),
+            
             DropdownButtonFormField<String>(
               value: _selectedStatus,
-              decoration: const InputDecoration(labelText: 'Status'),
-              items: [
-                const DropdownMenuItem(value: null, child: Text('Semua Status')),
-                ...['draft', 'submitted', 'approved', 'rejected', 'processed']
-                    .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                    .toList(),
+              decoration: const InputDecoration(
+                labelText: 'Status',
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(value: null, child: Text('Semua Status')),
+                DropdownMenuItem(value: 'draft', child: Text('Draft')),
+                DropdownMenuItem(value: 'submitted', child: Text('Diajukan')),
+                DropdownMenuItem(value: 'approved', child: Text('Disetujui')),
+                DropdownMenuItem(value: 'rejected', child: Text('Ditolak')),
+                DropdownMenuItem(value: 'processed', child: Text('Selesai')),
               ],
               onChanged: (value) {
                 setState(() => _selectedStatus = value);
                 Navigator.pop(context);
                 _loadData();
               },
+            ),
+            
+            const SizedBox(height: 16),
+            
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    value: _selectedMonth,
+                    decoration: const InputDecoration(
+                      labelText: 'Bulan',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: List.generate(12, (index) {
+                      final month = index + 1;
+                      return DropdownMenuItem(
+                        value: month,
+                        child: Text(DateFormat('MMMM', 'id_ID').format(DateTime(2024, month))),
+                      );
+                    }),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _selectedMonth = value);
+                        Navigator.pop(context);
+                        _loadData();
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    value: _selectedYear,
+                    decoration: const InputDecoration(
+                      labelText: 'Tahun',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: List.generate(3, (index) {
+                      final year = DateTime.now().year - index;
+                      return DropdownMenuItem(
+                        value: year,
+                        child: Text(year.toString()),
+                      );
+                    }),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _selectedYear = value);
+                        Navigator.pop(context);
+                        _loadData();
+                      }
+                    },
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -491,225 +633,5 @@ class _LemburScreenState extends State<LemburScreen> with SingleTickerProviderSt
   void dispose() {
     _tabController.dispose();
     super.dispose();
-  }
-}
-
-// Form Screen untuk tambah/edit
-class LemburFormScreen extends StatefulWidget {
-  final Lembur? lembur;
-
-  const LemburFormScreen({super.key, this.lembur});
-
-  @override
-  State<LemburFormScreen> createState() => _LemburFormScreenState();
-}
-
-class _LemburFormScreenState extends State<LemburFormScreen> {
-  final _formKey = GlobalKey<FormState>();
-  late Dio _dio;
-  late StorageService _storage;
-  
-  final _tanggalController = TextEditingController();
-  final _jamMulaiController = TextEditingController();
-  final _jamSelesaiController = TextEditingController();
-  final _deskripsiController = TextEditingController();
-  
-  String _kategori = 'reguler';
-  File? _photoFile;
-  bool _isSubmitting = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _initData();
-  }
-
-  Future<void> _initData() async {
-    _storage = await StorageService.getInstance();
-    _dio = Dio(BaseOptions(baseUrl: AppConstants.baseUrl));
-    final token = await _storage.getToken();
-    if (token != null) {
-      _dio.options.headers['Authorization'] = 'Bearer $token';
-    }
-
-    if (widget.lembur != null) {
-      _tanggalController.text = DateFormat('yyyy-MM-dd').format(widget.lembur!.tanggalLembur);
-      _jamMulaiController.text = widget.lembur!.jamMulai;
-      _jamSelesaiController.text = widget.lembur!.jamSelesai;
-      _deskripsiController.text = widget.lembur!.deskripsiPekerjaan;
-      _kategori = widget.lembur!.kategoriLembur;
-    }
-  }
-
-  Future<void> _pickPhoto() async {
-    final picker = ImagePicker();
-    final image = await picker.pickImage(source: ImageSource.camera, maxWidth: 1024);
-    if (image != null) {
-      setState(() => _photoFile = File(image.path));
-    }
-  }
-
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isSubmitting = true);
-
-    try {
-      final formData = FormData.fromMap({
-        'tanggal_lembur': _tanggalController.text,
-        'jam_mulai': _jamMulaiController.text,
-        'jam_selesai': _jamSelesaiController.text,
-        'kategori_lembur': _kategori,
-        'deskripsi_pekerjaan': _deskripsiController.text,
-        if (_photoFile != null)
-          'bukti_foto': await MultipartFile.fromFile(_photoFile!.path),
-      });
-
-      final url = widget.lembur == null
-          ? AppConstants.lemburSubmitEndpoint
-          : '${AppConstants.lemburUpdateEndpoint}/${widget.lembur!.lemburId}';
-
-      await _dio.post(url, data: formData);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(widget.lembur == null ? 'Lembur berhasil ditambahkan' : 'Lembur berhasil diupdate'),
-            backgroundColor: AppConstants.successColor,
-          ),
-        );
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppConstants.errorColor),
-        );
-      }
-    } finally {
-      setState(() => _isSubmitting = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.lembur == null ? 'Tambah Lembur' : 'Edit Lembur'),
-      ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            TextFormField(
-              controller: _tanggalController,
-              decoration: const InputDecoration(labelText: 'Tanggal'),
-              readOnly: true,
-              onTap: () async {
-                final date = await showDatePicker(
-                  context: context,
-                  initialDate: DateTime.now(),
-                  firstDate: DateTime.now().subtract(const Duration(days: 30)),
-                  lastDate: DateTime.now(),
-                );
-                if (date != null) {
-                  _tanggalController.text = DateFormat('yyyy-MM-dd').format(date);
-                }
-              },
-              validator: (v) => v!.isEmpty ? 'Wajib diisi' : null,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _jamMulaiController,
-              decoration: const InputDecoration(labelText: 'Jam Mulai (HH:mm)'),
-              validator: (v) => v!.isEmpty ? 'Wajib diisi' : null,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _jamSelesaiController,
-              decoration: const InputDecoration(labelText: 'Jam Selesai (HH:mm)'),
-              validator: (v) => v!.isEmpty ? 'Wajib diisi' : null,
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: _kategori,
-              decoration: const InputDecoration(labelText: 'Kategori'),
-              items: const [
-                DropdownMenuItem(value: 'reguler', child: Text('Reguler (1.5x)')),
-                DropdownMenuItem(value: 'hari_libur', child: Text('Hari Libur (2x)')),
-                DropdownMenuItem(value: 'hari_besar', child: Text('Hari Besar (2.5x)')),
-              ],
-              onChanged: (v) => setState(() => _kategori = v!),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _deskripsiController,
-              decoration: const InputDecoration(labelText: 'Deskripsi Pekerjaan'),
-              maxLines: 3,
-              validator: (v) => v!.isEmpty ? 'Wajib diisi' : null,
-            ),
-            const SizedBox(height: 16),
-            if (_photoFile != null)
-              Image.file(_photoFile!, height: 200),
-            ElevatedButton.icon(
-              onPressed: _pickPhoto,
-              icon: const Icon(Icons.camera_alt),
-              label: Text(_photoFile == null ? 'Ambil Foto' : 'Ganti Foto'),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _isSubmitting ? null : _submit,
-              child: _isSubmitting
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text('Simpan'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// Detail Screen
-class LemburDetailScreen extends StatelessWidget {
-  final Lembur lembur;
-
-  const LemburDetailScreen({super.key, required this.lembur});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Detail Lembur')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          CustomCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Tanggal', style: AppConstants.captionStyle),
-                Text(DateFormat('dd MMMM yyyy').format(lembur.tanggalLembur), style: AppConstants.bodyStyle),
-                const Divider(height: 24),
-                Text('Waktu', style: AppConstants.captionStyle),
-                Text('${lembur.jamMulai} - ${lembur.jamSelesai}', style: AppConstants.bodyStyle),
-                const Divider(height: 24),
-                Text('Total Jam', style: AppConstants.captionStyle),
-                Text('${lembur.totalJam} jam', style: AppConstants.bodyStyle),
-                const Divider(height: 24),
-                Text('Kategori', style: AppConstants.captionStyle),
-                Text(lembur.kategoriDisplay, style: AppConstants.bodyStyle),
-                const Divider(height: 24),
-                Text('Status', style: AppConstants.captionStyle),
-                Text(lembur.statusDisplay, style: AppConstants.bodyStyle),
-                const Divider(height: 24),
-                Text('Deskripsi', style: AppConstants.captionStyle),
-                Text(lembur.deskripsiPekerjaan, style: AppConstants.bodyStyle),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

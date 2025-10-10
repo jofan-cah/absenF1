@@ -596,11 +596,12 @@ class _AbsenScreenState extends State<AbsenScreen>
   }
 
   Widget _buildStatusBadge(String? status) {
+    final normalized = (status ?? 'unknown').toLowerCase().trim();
     Color color;
     String text;
     IconData icon;
 
-    switch (status) {
+    switch (normalized) {
       case 'present':
         color = AppConstants.successColor;
         text = 'Hadir';

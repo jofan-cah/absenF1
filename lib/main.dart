@@ -1,9 +1,15 @@
 // lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'screens/splash_screen.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Inisialisasi format tanggal lokal Indonesia (id_ID)
+  await initializeDateFormatting('id_ID', null);
+
   runApp(const F1AbsensiApp());
 }
 
