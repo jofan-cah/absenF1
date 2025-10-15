@@ -1,18 +1,19 @@
-// lib/screens/lembur_form_screen.dart - DISESUAIKAN DENGAN BACKEND TERBARU
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:dio/dio.dart';
-import 'package:intl/intl.dart';
+// lib/screens/lembur_form_screen.dart
 import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
-import '../services/storage_service.dart';
-import '../utils/constants.dart';
+import 'package:intl/intl.dart';
 import '../models/lembur.dart';
+import '../models/absen.dart';
+import '../utils/constants.dart';
+import '../services/storage_service.dart';
+import '../widgets/loading_widget.dart';
 
 class LemburFormScreen extends StatefulWidget {
-  final Lembur? lembur;
+  final Lembur? lembur; // null = create, ada data = update
 
-  const LemburFormScreen({super.key, this.lembur});
+  const LemburFormScreen({Key? key, this.lembur}) : super(key: key);
 
   @override
   State<LemburFormScreen> createState() => _LemburFormScreenState();
@@ -23,589 +24,524 @@ class _LemburFormScreenState extends State<LemburFormScreen> {
   late Dio _dio;
   late StorageService _storage;
   
-  final _absenIdController = TextEditingController();
+  // Controllers
   final _tanggalController = TextEditingController();
-  
-  // ✅ INPUT JAM MANUAL (24 JAM)
-  final _jamMulaiJamController = TextEditingController();
-  final _jamMulaiMenitController = TextEditingController();
-  final _jamSelesaiJamController = TextEditingController();
-  final _jamSelesaiMenitController = TextEditingController();
-  
+  final _jamMulaiController = TextEditingController();
+  final _jamSelesaiController = TextEditingController();
   final _deskripsiController = TextEditingController();
   
-  File? _photoFile;
+  // State
   bool _isSubmitting = false;
-  bool _isLoadingAbsen = false;
-  String? _absenInfoText;
-
+  bool _isLoadingAbsen = true;
+  List<Absen> _absenList = [];
+  String? _selectedAbsenId;
+  File? _photoFile;
+  String? _existingPhotoUrl;
+  
   @override
   void initState() {
     super.initState();
-    _initData();
+    _initServices();
   }
 
-  Future<void> _initData() async {
+  Future<void> _initServices() async {
     _storage = await StorageService.getInstance();
-    _dio = Dio(BaseOptions(baseUrl: AppConstants.baseUrl));
+    _dio = Dio(BaseOptions(
+      baseUrl: AppConstants.baseUrl,
+      connectTimeout: const Duration(milliseconds: AppConstants.connectionTimeout),
+      receiveTimeout: const Duration(milliseconds: AppConstants.receiveTimeout),
+    ));
+    
     final token = await _storage.getToken();
     if (token != null) {
       _dio.options.headers['Authorization'] = 'Bearer $token';
       _dio.options.headers['Accept'] = 'application/json';
     }
+    
+    _initForm();
+    _loadAbsenList();
+  }
 
+  void _initForm() {
     if (widget.lembur != null) {
-      // MODE EDIT
-      _absenIdController.text = widget.lembur!.absenId ?? '';
-      _tanggalController.text = DateFormat('yyyy-MM-dd').format(widget.lembur!.tanggalLembur);
-      
-      // Parse jam mulai (contoh: "08:30" → jam=08, menit=30)
-      final jamMulaiParts = widget.lembur!.jamMulai.split(':');
-      _jamMulaiJamController.text = jamMulaiParts[0];
-      _jamMulaiMenitController.text = jamMulaiParts[1];
-      
-      // Parse jam selesai
-      final jamSelesaiParts = widget.lembur!.jamSelesai.split(':');
-      _jamSelesaiJamController.text = jamSelesaiParts[0];
-      _jamSelesaiMenitController.text = jamSelesaiParts[1];
-      
-      _deskripsiController.text = widget.lembur!.deskripsiPekerjaan;
-    } else {
-      // MODE CREATE - Auto load absen hari ini
-      await _loadTodayAbsen();
+      // MODE UPDATE - populate existing data
+      final lembur = widget.lembur!;
+      _tanggalController.text = DateFormat('yyyy-MM-dd').format(lembur.tanggalLembur);
+      _jamMulaiController.text = lembur.jamMulai;
+      _jamSelesaiController.text = lembur.jamSelesai;
+      _deskripsiController.text = lembur.deskripsiPekerjaan;
+      _selectedAbsenId = lembur.absenId;
+      _existingPhotoUrl = lembur.buktiFoto;
     }
   }
 
-  // ✅ AUTO LOAD ABSEN HARI INI
-  Future<void> _loadTodayAbsen() async {
+  Future<void> _loadAbsenList() async {
     setState(() => _isLoadingAbsen = true);
     
     try {
-      final response = await _dio.get(AppConstants.absenTodayEndpoint);
-      
-      if (response.data['success'] == true) {
-        final data = response.data['data'];
-        
-        if (data['has_jadwal'] == true && data['absen'] != null) {
-          final absen = data['absen'];
-          
-          // Cek apakah sudah clock out
-          if (absen['clock_out'] != null) {
-            setState(() {
-              _absenIdController.text = absen['absen_id'];
-              _tanggalController.text = DateFormat('yyyy-MM-dd').format(DateTime.now());
-              _absenInfoText = '✓ Absen hari ini ditemukan (Clock Out: ${absen['clock_out']})';
-            });
-          } else {
-            setState(() {
-              _absenInfoText = '⚠ Anda belum clock out. Silakan clock out terlebih dahulu.';
-            });
-          }
-        } else {
-          setState(() {
-            _absenInfoText = '⚠ Tidak ada jadwal/absen untuk hari ini';
-          });
-        }
+      // Load absen yang sudah clock_out (syarat untuk lembur)
+      final response = await _dio.get(
+        AppConstants.absenHistoryEndpoint,
+        queryParameters: {
+          'has_clock_out': true,
+          'month': DateTime.now().month,
+          'year': DateTime.now().year,
+        },
+      );
+
+      if (response.data['success']) {
+        final List<dynamic> data = response.data['data']['data'];
+        setState(() {
+          _absenList = data.map((json) => Absen.fromJson(json)).toList();
+        });
       }
     } catch (e) {
-      setState(() {
-        _absenInfoText = '⚠ Gagal memuat data absen: ${e.toString()}';
-      });
+      _showError('Gagal memuat data absen: ${e.toString()}');
     } finally {
       setState(() => _isLoadingAbsen = false);
     }
   }
 
-  Future<void> _pickDate() async {
-    final date = await showDatePicker(
-      context: context,
-      initialDate: widget.lembur?.tanggalLembur ?? DateTime.now(),
-      firstDate: DateTime.now().subtract(const Duration(days: 30)),
-      lastDate: DateTime.now(),
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 70,
     );
-    
-    if (date != null) {
+
+    if (pickedFile != null) {
       setState(() {
-        _tanggalController.text = DateFormat('yyyy-MM-dd').format(date);
+        _photoFile = File(pickedFile.path);
+        _existingPhotoUrl = null; // Clear existing photo
       });
     }
   }
 
-  Future<void> _pickPhoto() async {
-    final picker = ImagePicker();
-    final image = await picker.pickImage(
-      source: ImageSource.camera,
-      maxWidth: 1024,
-      imageQuality: 85,
+  Future<void> _selectTime(TextEditingController controller) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+          child: child!,
+        );
+      },
     );
-    
-    if (image != null) {
-      setState(() => _photoFile = File(image.path));
+
+    if (picked != null) {
+      final formattedTime = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+      controller.text = formattedTime;
     }
   }
 
-  // ✅ VALIDASI & SUBMIT
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    
-    // VALIDASI: Foto wajib untuk CREATE
+
+    // Validasi foto untuk create
     if (widget.lembur == null && _photoFile == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Bukti foto wajib diupload'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showError('Bukti foto wajib diupload');
       return;
     }
 
     setState(() => _isSubmitting = true);
 
     try {
-      // Format jam: "HH:mm"
-      final jamMulai = '${_jamMulaiJamController.text.padLeft(2, '0')}:${_jamMulaiMenitController.text.padLeft(2, '0')}';
-      final jamSelesai = '${_jamSelesaiJamController.text.padLeft(2, '0')}:${_jamSelesaiMenitController.text.padLeft(2, '0')}';
-      
       final formData = FormData.fromMap({
-        'absen_id': _absenIdController.text,
+        if (widget.lembur == null) 'absen_id': _selectedAbsenId,
         'tanggal_lembur': _tanggalController.text,
-        'jam_mulai': jamMulai,
-        'jam_selesai': jamSelesai,
+        'jam_mulai': _jamMulaiController.text,
+        'jam_selesai': _jamSelesaiController.text,
         'deskripsi_pekerjaan': _deskripsiController.text,
         if (_photoFile != null)
           'bukti_foto': await MultipartFile.fromFile(_photoFile!.path),
       });
 
-      Response response;
-      
+      final String url;
+
       if (widget.lembur == null) {
-        // CREATE: POST /api/lembur/submit
-        response = await _dio.post(
-          AppConstants.lemburSubmitEndpoint,
-          data: formData,
-        );
+        // CREATE MODE
+        url = AppConstants.lemburSubmitEndpoint;
       } else {
-        // UPDATE: PUT /api/lembur/{id}
-        response = await _dio.put(
-          '${AppConstants.lemburUpdateEndpoint}/${widget.lembur!.lemburId}',
-          data: formData,
-        );
+        // UPDATE MODE
+        url = '${AppConstants.lemburUpdateEndpoint}/${widget.lembur!.lemburId}';
+        // Untuk PUT dengan file, gunakan _method override
+        formData.fields.add(const MapEntry('_method', 'PUT'));
       }
 
-      if (mounted && response.data['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(widget.lembur == null ? 'Lembur berhasil ditambahkan' : 'Lembur berhasil diupdate'),
-            backgroundColor: AppConstants.successColor,
-          ),
-        );
-        Navigator.pop(context, true); // Return true = ada perubahan
+      final response = await _dio.post(url, data: formData);
+
+      if (response.data['success']) {
+        if (mounted) {
+          _showSuccess(widget.lembur == null 
+            ? 'Lembur berhasil dibuat. Silakan submit untuk disetujui.'
+            : 'Lembur berhasil diupdate'
+          );
+          Navigator.pop(context, true); // Return true to refresh list
+        }
       }
+    } on DioException catch (e) {
+      String errorMessage = 'Terjadi kesalahan';
+      
+      if (e.response != null) {
+        final data = e.response!.data;
+        if (data is Map && data.containsKey('message')) {
+          errorMessage = data['message'];
+        } else if (data is Map && data.containsKey('errors')) {
+          final errors = data['errors'] as Map;
+          errorMessage = errors.values.first.toString();
+        }
+      }
+      
+      _showError(errorMessage);
     } catch (e) {
-      if (e is DioException && e.response?.data != null) {
-        final errorMsg = e.response!.data['message'] ?? 'Gagal menyimpan lembur';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMsg), backgroundColor: AppConstants.errorColor),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}'), backgroundColor: AppConstants.errorColor),
-        );
-      }
+      _showError('Error: ${e.toString()}');
     } finally {
       setState(() => _isSubmitting = false);
+    }
+  }
+
+  void _showError(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: AppConstants.errorColor,
+        ),
+      );
+    }
+  }
+
+  void _showSuccess(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: AppConstants.successColor,
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppConstants.backgroundColor,
       appBar: AppBar(
         title: Text(widget.lembur == null ? 'Tambah Lembur' : 'Edit Lembur'),
+        elevation: 0,
       ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(AppConstants.paddingMedium),
-          children: [
-            // ========================================
-            // INFO ABSEN
-            // ========================================
-            if (_isLoadingAbsen)
-              Container(
-                padding: const EdgeInsets.all(12),
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blue.shade700),
-                    ),
-                    const SizedBox(width: 12),
-                    Text('Memuat data absen hari ini...', style: TextStyle(fontSize: 12, color: Colors.blue.shade700)),
-                  ],
-                ),
-              )
-            else if (_absenInfoText != null)
-              Container(
-                padding: const EdgeInsets.all(12),
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: _absenInfoText!.startsWith('✓') 
-                      ? Colors.green.shade50 
-                      : Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: _absenInfoText!.startsWith('✓') 
-                        ? Colors.green.shade200 
-                        : Colors.orange.shade200,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      _absenInfoText!.startsWith('✓') ? Icons.check_circle_outline : Icons.info_outline,
-                      color: _absenInfoText!.startsWith('✓') 
-                          ? Colors.green.shade700 
-                          : Colors.orange.shade700,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _absenInfoText!,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: _absenInfoText!.startsWith('✓') 
-                              ? Colors.green.shade700 
-                              : Colors.orange.shade700,
-                        ),
+      body: _isLoadingAbsen
+          ? const LoadingWidget(message: 'Memuat data...')
+          : Form(
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.all(AppConstants.paddingMedium),
+                children: [
+                  // Info Card
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppConstants.primaryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+                      border: Border.all(
+                        color: AppConstants.primaryColor.withOpacity(0.3),
                       ),
                     ),
-                  ],
-                ),
-              ),
-            
-            // ========================================
-            // ABSEN ID (Required)
-            // ========================================
-            TextFormField(
-              controller: _absenIdController,
-              decoration: InputDecoration(
-                labelText: 'Absen ID *',
-                hintText: widget.lembur == null ? 'Otomatis dari absen hari ini' : 'ID Absen',
-                border: const OutlineInputBorder(),
-                helperText: 'ID absen dari hari kerja Anda',
-                prefixIcon: const Icon(Icons.badge),
-                suffixIcon: widget.lembur == null && _absenIdController.text.isEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.refresh),
-                        onPressed: _loadTodayAbsen,
-                        tooltip: 'Reload absen hari ini',
-                      )
-                    : null,
-              ),
-              readOnly: widget.lembur == null && _absenIdController.text.isNotEmpty,
-              validator: (v) => v == null || v.isEmpty ? 'Absen ID wajib diisi' : null,
-            ),
-            const SizedBox(height: 16),
-            
-            // ========================================
-            // TANGGAL (Required)
-            // ========================================
-            TextFormField(
-              controller: _tanggalController,
-              readOnly: true,
-              decoration: const InputDecoration(
-                labelText: 'Tanggal Lembur *',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.calendar_today),
-                helperText: 'Pilih tanggal lembur',
-              ),
-              onTap: _pickDate,
-              validator: (v) => v == null || v.isEmpty ? 'Tanggal wajib diisi' : null,
-            ),
-            const SizedBox(height: 20),
-            
-            // ========================================
-            // JAM MULAI (Required - Input Manual 24 Jam)
-            // ========================================
-            Text(
-              'Jam Mulai Lembur *',
-              style: AppConstants.bodyStyle.copyWith(
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: TextFormField(
-                    controller: _jamMulaiJamController,
-                    keyboardType: TextInputType.number,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(2),
-                    ],
-                    decoration: const InputDecoration(
-                      labelText: 'Jam',
-                      hintText: '08',
-                      border: OutlineInputBorder(),
-                      helperText: '00-23',
-                      prefixIcon: Icon(Icons.access_time),
-                    ),
-                    validator: (v) {
-                      if (v == null || v.isEmpty) return 'Wajib';
-                      final jam = int.tryParse(v);
-                      if (jam == null || jam < 0 || jam > 23) return '0-23';
-                      return null;
-                    },
-                  ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12),
-                  child: Text(
-                    ':',
-                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: TextFormField(
-                    controller: _jamMulaiMenitController,
-                    keyboardType: TextInputType.number,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(2),
-                    ],
-                    decoration: const InputDecoration(
-                      labelText: 'Menit',
-                      hintText: '30',
-                      border: OutlineInputBorder(),
-                      helperText: '00-59',
-                    ),
-                    validator: (v) {
-                      if (v == null || v.isEmpty) return 'Wajib';
-                      final menit = int.tryParse(v);
-                      if (menit == null || menit < 0 || menit > 59) return '0-59';
-                      return null;
-                    },
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            
-            // ========================================
-            // JAM SELESAI (Required - Input Manual 24 Jam)
-            // ========================================
-            Text(
-              'Jam Selesai Lembur *',
-              style: AppConstants.bodyStyle.copyWith(
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: TextFormField(
-                    controller: _jamSelesaiJamController,
-                    keyboardType: TextInputType.number,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(2),
-                    ],
-                    decoration: const InputDecoration(
-                      labelText: 'Jam',
-                      hintText: '17',
-                      border: OutlineInputBorder(),
-                      helperText: '00-23',
-                      prefixIcon: Icon(Icons.access_time),
-                    ),
-                    validator: (v) {
-                      if (v == null || v.isEmpty) return 'Wajib';
-                      final jam = int.tryParse(v);
-                      if (jam == null || jam < 0 || jam > 23) return '0-23';
-                      return null;
-                    },
-                  ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12),
-                  child: Text(
-                    ':',
-                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: TextFormField(
-                    controller: _jamSelesaiMenitController,
-                    keyboardType: TextInputType.number,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(2),
-                    ],
-                    decoration: const InputDecoration(
-                      labelText: 'Menit',
-                      hintText: '00',
-                      border: OutlineInputBorder(),
-                      helperText: '00-59',
-                    ),
-                    validator: (v) {
-                      if (v == null || v.isEmpty) return 'Wajib';
-                      final menit = int.tryParse(v);
-                      if (menit == null || menit < 0 || menit > 59) return '0-59';
-                      return null;
-                    },
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            
-            // ========================================
-            // DESKRIPSI (Required, max 500 chars)
-            // ========================================
-            TextFormField(
-              controller: _deskripsiController,
-              maxLines: 4,
-              maxLength: 500,
-              decoration: const InputDecoration(
-                labelText: 'Deskripsi Pekerjaan *',
-                hintText: 'Jelaskan detail pekerjaan lembur yang dilakukan',
-                border: OutlineInputBorder(),
-                alignLabelWithHint: true,
-                prefixIcon: Padding(
-                  padding: EdgeInsets.only(bottom: 60),
-                  child: Icon(Icons.description),
-                ),
-              ),
-              validator: (v) => v == null || v.isEmpty ? 'Deskripsi wajib diisi' : null,
-            ),
-            const SizedBox(height: 16),
-            
-            // ========================================
-            // BUKTI FOTO (Required untuk CREATE)
-            // ========================================
-            if (_photoFile != null) ...[
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.file(
-                  _photoFile!,
-                  height: 250,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
-            
-            ElevatedButton.icon(
-              onPressed: _pickPhoto,
-              icon: const Icon(Icons.camera_alt),
-              label: Text(
-                _photoFile == null 
-                    ? (widget.lembur == null ? 'Ambil Foto Bukti *' : 'Ganti Foto (Opsional)') 
-                    : 'Ganti Foto'
-              ),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.all(16),
-                backgroundColor: _photoFile == null && widget.lembur == null
-                    ? AppConstants.primaryColor 
-                    : Colors.grey.shade600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (widget.lembur == null)
-              Text(
-                '* Foto wajib untuk pengajuan baru',
-                style: AppConstants.captionStyle.copyWith(
-                  color: AppConstants.errorColor,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            const SizedBox(height: 24),
-            
-            // ========================================
-            // SUBMIT BUTTON
-            // ========================================
-            ElevatedButton(
-              onPressed: _isSubmitting ? null : _submit,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.all(18),
-                backgroundColor: AppConstants.primaryColor,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: _isSubmitting
-                  ? const SizedBox(
-                      height: 22,
-                      width: 22,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2.5,
-                      ),
-                    )
-                  : Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          widget.lembur == null ? Icons.save : Icons.update,
-                          size: 20,
+                        Row(
+                          children: [
+                            Icon(Icons.info_outline, color: AppConstants.primaryColor, size: 20),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Informasi Penting',
+                              style: AppConstants.subtitleStyle.copyWith(
+                                fontSize: 14,
+                                color: AppConstants.primaryColor,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(height: 8),
                         Text(
-                          widget.lembur == null ? 'Simpan Lembur' : 'Update Lembur',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
+                          '• Lembur hanya bisa diajukan max 1 jam setelah shift berakhir\n'
+                          '• Anda harus sudah clock out terlebih dahulu\n'
+                          '• Total jam dihitung otomatis oleh sistem\n'
+                          '• Tunjangan: 0-3.99 jam = 1x, 4+ jam = 2x uang makan',
+                          style: AppConstants.captionStyle,
                         ),
                       ],
                     ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '* Field bertanda bintang wajib diisi',
-              textAlign: TextAlign.center,
-              style: AppConstants.captionStyle.copyWith(
-                color: AppConstants.textSecondaryColor,
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Absen Selector (hanya untuk create)
+                  if (widget.lembur == null) ...[
+                    Text('Pilih Absensi *', style: AppConstants.bodyStyle.copyWith(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: _selectedAbsenId,
+                      decoration: InputDecoration(
+                        hintText: 'Pilih tanggal absensi',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+                        ),
+                        filled: true,
+                        fillColor: AppConstants.cardColor,
+                      ),
+                      items: _absenList.map((absen) {
+                        return DropdownMenuItem(
+                          value: absen.absenId,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                DateFormat('EEEE, dd MMM yyyy', 'id_ID').format(absen.date),
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                'Clock Out: ${absen.clockOut ?? "-"}',
+                                style: AppConstants.captionStyle,
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() => _selectedAbsenId = value);
+                        
+                        if (value != null) {
+                          final selectedAbsen = _absenList.firstWhere((a) => a.absenId == value);
+                          _tanggalController.text = DateFormat('yyyy-MM-dd').format(selectedAbsen.date);
+                        }
+                      },
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Pilih absensi terlebih dahulu';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // Tanggal Lembur
+                  Text('Tanggal Lembur *', style: AppConstants.bodyStyle.copyWith(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _tanggalController,
+                    decoration: InputDecoration(
+                      hintText: 'Pilih tanggal',
+                      suffixIcon: const Icon(Icons.calendar_today),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+                      ),
+                      filled: true,
+                      fillColor: AppConstants.cardColor,
+                    ),
+                    readOnly: true,
+                    onTap: () async {
+                      final date = await showDatePicker(
+                        context: context,
+                        initialDate: DateTime.now(),
+                        firstDate: DateTime.now().subtract(const Duration(days: 30)),
+                        lastDate: DateTime.now(),
+                      );
+                      if (date != null) {
+                        _tanggalController.text = DateFormat('yyyy-MM-dd').format(date);
+                      }
+                    },
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Tanggal wajib diisi';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Jam Mulai & Jam Selesai
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Jam Mulai *', style: AppConstants.bodyStyle.copyWith(fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 8),
+                            TextFormField(
+                              controller: _jamMulaiController,
+                              decoration: InputDecoration(
+                                hintText: 'HH:mm',
+                                suffixIcon: const Icon(Icons.access_time),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+                                ),
+                                filled: true,
+                                fillColor: AppConstants.cardColor,
+                              ),
+                              readOnly: true,
+                              onTap: () => _selectTime(_jamMulaiController),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Wajib diisi';
+                                }
+                                return null;
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Jam Selesai *', style: AppConstants.bodyStyle.copyWith(fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 8),
+                            TextFormField(
+                              controller: _jamSelesaiController,
+                              decoration: InputDecoration(
+                                hintText: 'HH:mm',
+                                suffixIcon: const Icon(Icons.access_time),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+                                ),
+                                filled: true,
+                                fillColor: AppConstants.cardColor,
+                              ),
+                              readOnly: true,
+                              onTap: () => _selectTime(_jamSelesaiController),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Wajib diisi';
+                                }
+                                return null;
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Deskripsi Pekerjaan
+                  Text('Deskripsi Pekerjaan *', style: AppConstants.bodyStyle.copyWith(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _deskripsiController,
+                    decoration: InputDecoration(
+                      hintText: 'Jelaskan pekerjaan yang dikerjakan saat lembur',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+                      ),
+                      filled: true,
+                      fillColor: AppConstants.cardColor,
+                    ),
+                    maxLines: 4,
+                    maxLength: 500,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Deskripsi wajib diisi';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Bukti Foto
+                  Text(
+                    'Bukti Foto ${widget.lembur == null ? "*" : "(Opsional)"}',
+                    style: AppConstants.bodyStyle.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  GestureDetector(
+                    onTap: _pickImage,
+                    child: Container(
+                      height: 200,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+                        color: AppConstants.cardColor,
+                      ),
+                      child: _photoFile != null
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+                              child: Image.file(_photoFile!, fit: BoxFit.cover),
+                            )
+                          : _existingPhotoUrl != null
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+                                  child: Image.network(
+                                    '${AppConstants.baseUrl.replaceAll('/api', '')}/storage/$_existingPhotoUrl',
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return _buildPlaceholder();
+                                    },
+                                  ),
+                                )
+                              : _buildPlaceholder(),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Submit Button
+                  SizedBox(
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: _isSubmitting ? null : _submit,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppConstants.primaryColor,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+                        ),
+                      ),
+                      child: _isSubmitting
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : Text(
+                              widget.lembur == null ? 'SIMPAN DRAFT' : 'UPDATE LEMBUR',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
+    );
+  }
+
+  Widget _buildPlaceholder() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.add_a_photo, size: 64, color: AppConstants.textSecondaryColor),
+        const SizedBox(height: 8),
+        Text(
+          'Tap untuk ambil foto',
+          style: AppConstants.captionStyle,
         ),
-      ),
+      ],
     );
   }
 
   @override
   void dispose() {
-    _absenIdController.dispose();
     _tanggalController.dispose();
-    _jamMulaiJamController.dispose();
-    _jamMulaiMenitController.dispose();
-    _jamSelesaiJamController.dispose();
-    _jamSelesaiMenitController.dispose();
+    _jamMulaiController.dispose();
+    _jamSelesaiController.dispose();
     _deskripsiController.dispose();
     super.dispose();
   }
