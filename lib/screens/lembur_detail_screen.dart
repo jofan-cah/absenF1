@@ -544,7 +544,7 @@ class _LemburDetailScreenState extends State<LemburDetailScreen> {
                 },
                 errorBuilder: (context, error, stackTrace) {
                   print('❌ IMAGE ERROR: $error');
-                  print('❌ URL: $imageUrl');
+                
                   return Container(
                     height: 250,
                     color: AppConstants.backgroundColor,
@@ -566,7 +566,7 @@ class _LemburDetailScreenState extends State<LemburDetailScreen> {
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             child: SelectableText(
-                              imageUrl,
+                              imageUrl!,
                               style: AppConstants.captionStyle.copyWith(
                                 fontSize: 9,
                               ),

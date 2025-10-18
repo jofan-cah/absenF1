@@ -9,7 +9,6 @@ class Lembur {
   final double totalJam;
   final String deskripsiPekerjaan;
   final String? buktiFoto;
-  final String? buktiFotoUrl; // ✅ TAMBAH INI
   final String status; // draft, submitted, approved, rejected, processed
   
   // Field lama yang masih ada di DB (tapi tidak dipakai lagi)
@@ -46,7 +45,6 @@ class Lembur {
     required this.totalJam,
     required this.deskripsiPekerjaan,
     this.buktiFoto,
-    this.buktiFotoUrl, // ✅ TAMBAH INI
     required this.status,
     this.kategoriLembur, // DEPRECATED
     this.multiplier, // DEPRECATED
@@ -82,7 +80,6 @@ class Lembur {
       totalJam: _parseDouble(json['total_jam']),
       deskripsiPekerjaan: json['deskripsi_pekerjaan'] ?? '',
       buktiFoto: json['bukti_foto'],
-      buktiFotoUrl: json['bukti_foto_url'], // ✅ TAMBAH INI
       status: json['status'] ?? 'draft',
       kategoriLembur: json['kategori_lembur'], // Parse tapi tidak dipakai
       multiplier: json['multiplier'] != null ? _parseDouble(json['multiplier']) : null, // Parse tapi tidak dipakai
@@ -133,7 +130,6 @@ class Lembur {
       'total_jam': totalJam,
       'deskripsi_pekerjaan': deskripsiPekerjaan,
       'bukti_foto': buktiFoto,
-      'bukti_foto_url': buktiFotoUrl, // ✅ TAMBAH INI
       'status': status,
       'kategori_lembur': kategoriLembur, // Tetap serialize untuk backward compatibility
       'multiplier': multiplier, // Tetap serialize untuk backward compatibility
@@ -239,7 +235,6 @@ class Lembur {
     double? totalJam,
     String? deskripsiPekerjaan,
     String? buktiFoto,
-    String? buktiFotoUrl, // ✅ TAMBAH INI
     String? status,
     String? kategoriLembur,
     double? multiplier,
@@ -273,7 +268,6 @@ class Lembur {
       totalJam: totalJam ?? this.totalJam,
       deskripsiPekerjaan: deskripsiPekerjaan ?? this.deskripsiPekerjaan,
       buktiFoto: buktiFoto ?? this.buktiFoto,
-      buktiFotoUrl: buktiFotoUrl ?? this.buktiFotoUrl, // ✅ TAMBAH INI
       status: status ?? this.status,
       kategoriLembur: kategoriLembur ?? this.kategoriLembur,
       multiplier: multiplier ?? this.multiplier,

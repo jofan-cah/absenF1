@@ -28,6 +28,8 @@ class TunjanganKaryawan {
   final TunjanganType? tunjanganType; // Relasi
   final DateTime createdAt;
   final DateTime updatedAt;
+  final int? delayDays; // ← delay berapa hari
+  final DateTime? availableRequestDate; // ← tanggal kapan bisa request
 
   TunjanganKaryawan({
     required this.tunjanganKaryawanId,
@@ -56,6 +58,8 @@ class TunjanganKaryawan {
     this.tunjanganType,
     required this.createdAt,
     required this.updatedAt,
+    this.delayDays, // ← tambah ini
+    this.availableRequestDate, // ← tambah ini
   });
 
   factory TunjanganKaryawan.fromJson(Map<String, dynamic> json) {
@@ -96,6 +100,10 @@ class TunjanganKaryawan {
           : null,
       createdAt: DateTime.parse(json['created_at']),
       updatedAt: DateTime.parse(json['updated_at']),
+      delayDays: json['delay_days'], // ← tambah ini
+      availableRequestDate: json['available_request_date'] != null
+          ? DateTime.parse(json['available_request_date'])
+          : null, // ← tambah ini
     );
   }
 
@@ -131,7 +139,18 @@ class TunjanganKaryawan {
   }
 
   // Helper methods
-  bool get canRequest => status == 'pending';
+  bool get canRequest {
+    if (status != 'pending') return false;
+
+    // ✅ CEK DELAY
+    if (availableRequestDate != null) {
+      return DateTime.now().isAfter(availableRequestDate!) ||
+          DateTime.now().isAtSameMomentAs(availableRequestDate!);
+    }
+
+    return true;
+  }
+
   bool get canConfirm => status == 'approved';
 
   String get statusDisplay {

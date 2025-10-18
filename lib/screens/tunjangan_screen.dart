@@ -24,9 +24,8 @@ class _TunjanganScreenState extends State<TunjanganScreen> with SingleTickerProv
   Map<String, dynamic>? _summary;
   bool _isLoading = true;
   
-  // UBAH: Jangan paksa default, biar null
-  int? _selectedMonth; // null = all months
-  int? _selectedYear;  // null = all years
+  int? _selectedMonth;
+  int? _selectedYear;
   String? _selectedStatus;
   String? _selectedType;
 
@@ -63,7 +62,6 @@ class _TunjanganScreenState extends State<TunjanganScreen> with SingleTickerProv
 
   Future<void> _loadTunjanganList() async {
     try {
-      // UBAH: Hanya kirim parameter jika ada value
       final queryParams = <String, dynamic>{
         'per_page': 50,
       };
@@ -94,7 +92,6 @@ class _TunjanganScreenState extends State<TunjanganScreen> with SingleTickerProv
 
   Future<void> _loadSummary() async {
     try {
-      // UBAH: Hanya kirim parameter jika ada value
       final queryParams = <String, dynamic>{};
       
       if (_selectedMonth != null) queryParams['month'] = _selectedMonth;
@@ -273,7 +270,6 @@ class _TunjanganScreenState extends State<TunjanganScreen> with SingleTickerProv
   Widget _buildSummaryHeader() {
     if (_summary == null) return const SizedBox.shrink();
 
-    // UBAH: Tampilkan periode yang sesuai
     String periodText;
     if (_selectedMonth != null && _selectedYear != null) {
       periodText = DateFormat('MMMM yyyy').format(DateTime(_selectedYear!, _selectedMonth!));
@@ -504,8 +500,6 @@ class _TunjanganScreenState extends State<TunjanganScreen> with SingleTickerProv
           children: [
             Text('Filter Tunjangan', style: AppConstants.subtitleStyle),
             const SizedBox(height: 20),
-            
-            // Filter Tahun
             DropdownButtonFormField<int?>(
               value: _selectedYear,
               decoration: const InputDecoration(
@@ -522,8 +516,6 @@ class _TunjanganScreenState extends State<TunjanganScreen> with SingleTickerProv
               },
             ),
             const SizedBox(height: 16),
-            
-            // Filter Bulan
             DropdownButtonFormField<int?>(
               value: _selectedMonth,
               decoration: const InputDecoration(
@@ -543,8 +535,6 @@ class _TunjanganScreenState extends State<TunjanganScreen> with SingleTickerProv
               },
             ),
             const SizedBox(height: 16),
-            
-            // Filter Status
             DropdownButtonFormField<String?>(
               value: _selectedStatus,
               decoration: const InputDecoration(
@@ -562,8 +552,6 @@ class _TunjanganScreenState extends State<TunjanganScreen> with SingleTickerProv
               },
             ),
             const SizedBox(height: 24),
-            
-            // Action buttons
             Row(
               children: [
                 Expanded(
@@ -618,7 +606,7 @@ class _TunjanganScreenState extends State<TunjanganScreen> with SingleTickerProv
   }
 }
 
-// Detail Screen (tidak berubah)
+// Detail Screen
 class TunjanganDetailScreen extends StatelessWidget {
   final TunjanganKaryawan tunjangan;
 
