@@ -1,6 +1,8 @@
 // lib/screens/login_screen.dart
+import 'package:f1absensi/screens/fcm_service.dart';
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+// import '../services/fcm_service.dart'; // TAMBAH INI
 import '../utils/constants.dart';
 import '../widgets/loading_widget.dart';
 import 'dashboard_screen.dart';
@@ -52,6 +54,33 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (result['success'] == true) {
       if (mounted) {
+        // ============================================
+        // SAVE FCM TOKEN KE SERVER (TAMBAH INI)
+        // ============================================
+        try {
+          // Ambil auth token dari result login
+          String? authToken = result['data']?['token']; // Sesuaikan dengan response Laravel kamu
+          
+          if (authToken != null) {
+            print('🔑 Auth Token: ${authToken.substring(0, 20)}...');
+            
+            // Save FCM token ke server
+            bool tokenSaved = await FCMService.saveTokenToServer(authToken);
+            
+            if (tokenSaved) {
+              print('✅ FCM Token berhasil disimpan ke server');
+            } else {
+              print('⚠️ FCM Token gagal disimpan, tapi tetap lanjut login');
+            }
+          } else {
+            print('⚠️ Auth token tidak ditemukan di response');
+          }
+        } catch (e) {
+          print('❌ Error saving FCM token: $e');
+          // Tetap lanjut login meskipun gagal save token
+        }
+        
+        // Navigate ke dashboard
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(

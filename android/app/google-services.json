@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "214183847787",
+    "firebase_url": "https://prefast-cd885-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "prefast-cd885",
+    "storage_bucket": "prefast-cd885.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:214183847787:android:ef4a9d250ff02e74504e2e",
+        "android_client_info": {
+          "package_name": "com.example.f1absensi"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBULPEBnsROA8CIou-TGxPMWZfIjapACyY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
