@@ -5,6 +5,8 @@ class AppConstants {
   // API Configuration
   static const String baseUrl = 'https://prefast-dev.fiberone.net.id/api';
   // static const String baseUrl = 'https://prefast.fiberone.net.id/api';
+    // Endpoint untuk cek versi
+  static const String versionCheckUrl = '$baseUrl/app-version';
 
   // API Endpoints
   static const String loginEndpoint = '/login';
@@ -143,7 +145,7 @@ class AppConstants {
 
   // App Info
   static const String appName = 'F1 Absensi';
-  static const String appVersion = '1.3.0';
+  static const String appVersion = '1.4.0';
 }
 
 // Absen Status
