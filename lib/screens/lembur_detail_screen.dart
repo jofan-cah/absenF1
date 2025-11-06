@@ -8,7 +8,7 @@ import '../services/storage_service.dart';
 import '../widgets/loading_widget.dart';
 import '../widgets/custom_card.dart';
 import 'lembur_finish_screen.dart';
-
+import 'lembur_edit_screen.dart';
 class LemburDetailScreen extends StatefulWidget {
   final Lembur lembur;
 
@@ -228,12 +228,13 @@ class _LemburDetailScreenState extends State<LemburDetailScreen> {
                   if (_lembur.status == 'approved' ||
                       _lembur.status == 'rejected')
                     _buildApprovalCard(),
-
+                  const SizedBox(height: 16),
                   const SizedBox(height: 16),
 
                   // Action Button
                   if (_lembur.canFinish) _buildFinishButton(),
                   if (_lembur.canSubmit) _buildSubmitButton(),
+                  if (_lembur.canEdit) _buildEditButton(),
 
                   const SizedBox(height: 32),
                 ],
@@ -767,4 +768,40 @@ class _LemburDetailScreenState extends State<LemburDetailScreen> {
       ),
     );
   }
+  Widget _buildEditButton() {
+  return Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    child: SizedBox(
+      width: double.infinity,
+      height: 56,
+      child: ElevatedButton.icon(
+        onPressed: () async {
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => LemburEditScreen(lembur: _lembur),
+            ),
+          );
+          
+          if (result == true) {
+            _loadDetail(); // Reload data setelah edit
+          }
+        },
+        icon: const Icon(Icons.edit, size: 24),
+        label: const Text(
+          'EDIT LEMBUR',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.orange,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+
 }
